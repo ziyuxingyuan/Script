@@ -2,58 +2,58 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect Final Attempt (Encode-Decode-EUCJP)</title>
+    <title>URL Redirect Debug (Detailed Final URL)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2.0.0/encoding.min.js"></script>
     <script>
-        (function() { //  <--  IIFE 开始
+        (function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const keywords_utf8_encoded_raw = urlParams.get('keywords'); // 获取原始 keywords
+            const keywords_utf8_encoded_raw = urlParams.get('keywords');
             const baseUrl = urlParams.get('baseUrl');
 
-            console.log("keywords_utf8_encoded_raw:", keywords_utf8_encoded_raw); // 输出原始 keywords
-            console.log("baseUrl:", baseUrl); // 输出 baseUrl
+            console.log("keywords_utf8_encoded_raw:", keywords_utf8_encoded_raw);
+            console.log("baseUrl:", baseUrl);
 
             if (keywords_utf8_encoded_raw && baseUrl) {
-                // *手动进行 UTF-8 URL 编码*
                 const keywords_utf8_encoded = encodeURIComponent(keywords_utf8_encoded_raw);
-                console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded); // 输出 UTF-8 URL 编码后的 keywords
+                console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded);
 
-                // *对 UTF-8 URL 编码后的字符串进行 *URL 解码*！*
-                let keywords_utf16_decoded; // 注意变量名改为 keywords_utf16_decoded，表示 UTF-16 字符串
+                let keywords_utf16_decoded;
                 try {
-                    keywords_utf16_decoded = decodeURIComponent(keywords_utf8_encoded); // *解码 UTF-8 URL 编码后的字符串*
-                    console.log("keywords_utf16_decoded (after decodeURIComponent):", keywords_utf16_decoded); // 输出 *解码后的 UTF-16 字符串*
+                    keywords_utf16_decoded = decodeURIComponent(keywords_utf8_encoded);
+                    console.log("keywords_utf16_decoded (after decodeURIComponent):", keywords_utf16_decoded);
                 } catch (e) {
                     console.error("decodeURIComponent() error:", e);
                     document.body.innerText = "Error: decodeURIComponent() failed.";
-                    return; // return 现在在 IIFE 函数内部，合法
+                    return;
                 }
 
 
-                Encoding.convert(keywords_utf16_decoded, { // *使用 *解码后的 UTF-16 字符串*  作为输入*
+                Encoding.convert(keywords_utf16_decoded, {
                     to: 'EUCJP',
-                    from: 'UTF8', // *from: 'UTF8' 仍然保持，因为 JavaScript 字符串本质上是 UTF-16，可以兼容 UTF-8 字符*
+                    from: 'UTF8',
                     type: 'array'
                 }, function(eucjp_bytes) {
-                    console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes
+                    console.log("eucjp_bytes (callback):", eucjp_bytes);
 
                     if (eucjp_bytes && eucjp_bytes.length > 0) {
                         let keywords_eucjp_encoded = '';
                         for (let i = 0; i < eucjp_bytes.length; i++) {
                             keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
                         }
-                        console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
+                        console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP 编码后的关键词
 
                         let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
-                        console.log("finalUrl:", finalUrl); // 输出 final URL
-                        console.log("window.location.href:", finalUrl); // 再次输出 final URL
+                        console.log("finalUrl (before redirect):", finalUrl); // *输出 *完整的 finalUrl*  URL*
+                        console.log("baseUrl (for finalUrl):", baseUrl); // *再次输出 *完整的 baseUrl*  URL*
+                        console.log("keywords_eucjp_encoded (for finalUrl):", keywords_eucjp_encoded); // *再次输出 *完整的 keywords_eucjp_encoded*  URL*
+                        console.log("window.location.href:", finalUrl);
 
-                        window.location.href = finalUrl; // 执行跳转
+                        window.location.href = finalUrl;
                     } else {
-                        console.error("EUC-JP encoding failed, eucjp_bytes is empty or invalid."); // 输出编码失败错误
+                        console.error("EUC-JP encoding failed, eucjp_bytes is empty or invalid.");
                         document.body.innerText = "Error: EUC-JP encoding failed.";
                     }
                 });
@@ -61,9 +61,9 @@
             } else {
                 document.body.innerText = "Error: Missing parameters.";
                 console.error("Error: Missing parameters.");
-                return; // return 现在在 IIFE 函数内部，合法
+                return;
             }
-        })(); //  <--  IIFE 结束，并立即执行
+        })();
     </script>
 </body>
 </html>
