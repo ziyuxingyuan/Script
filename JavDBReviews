@@ -1,0 +1,147 @@
+// ==UserScript==
+// @name            JavDB短评显示
+// @namespace       JavDB短评显示
+// @version         1.0
+// @author          ziyuxingyuan
+// @description     JavDB短评完整显示
+// @match           https://javdb.com/v/*
+// @icon            https://javdb.com/favicon.ico
+// @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.Req.lib.js
+// @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.ReqDB.lib.js
+// @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.Util.lib.js
+// @connect         hechuangxinxi.xyz
+// @connect         javdb.com
+// @run-at          document-end
+// @grant           GM_xmlhttpRequest
+// @grant           GM_deleteValues
+// @grant           GM_listValues
+// @grant           unsafeWindow
+// @grant           GM_getValue
+// @grant           GM_setValue
+// @require         https://github.com/Tampermonkey/utils/raw/d8a4543a5f828dfa8eefb0a3360859b6fe9c3c34/requires/gh_2215_make_GM_xhr_more_parallel_again.js
+// ==/UserScript==
+
+Util.upStore();
+
+(function () {
+  const mid = unsafeWindow.appData?.split("/").at(-1);
+  if (!mid) return;
+
+  const tabsNode = document.querySelector(".tabs.no-bottom");
+  const magnetsNode = document.querySelector("#magnets");
+  const reviewsNode = document.querySelector("#reviews");
+  const listsNode = document.querySelector("#lists");
+  const loadNode = document.querySelector("#tabs-container > article");
+
+  const renderCont = (insert) => {
+    return `<article class="message video-panel"><div class="message-body">${insert}</div></article>`;
+  };
+
+  const setReviews = (sources) => { // 修改为处理短评数据
+    let domStr = "暂无数据";
+    if (sources.length) { // 假设 API 返回的是短评数组
+      domStr = `<div class="review-items">${sources.map(renderReview).join("")}</div>`; // 需要实现 renderReview 函数
+    }
+    reviewsNode.innerHTML = renderCont(domStr);
+  };
+
+  const renderReview = (review) => { // 完善 renderReview 函数，根据实际数据结构调整
+    const username = review.username || '匿名用户'; // 获取用户名，或使用 "匿名用户" 作为默认值
+    const content = review.content; // 获取短评内容
+    return `<div class="review-item">
+              ${username}：${content}
+            </div>`; // 拼接用户名和短评内容，使用冒号分隔
+  };
+
+
+  const showReviews = ({ dataset }) => { // 修改为显示短评
+    magnetsNode.style.display = "none";
+    listsNode.style.display = "none";
+    reviewsNode.style.display = "block";
+
+    if (dataset.loaded === "true") return;
+    dataset.loaded = "true";
+
+    reviewsNode.innerHTML = "";
+    loadNode.style.display = "block";
+
+    // ======================  API 接口路径和参数配置 (测试场景 4)  ======================
+
+    apiUrl = `https://api.hechuangxinxi.xyz/api/v1/movies/${mid}/reviews`; // APP 抓包 API 路径
+    params = {
+      // sort_by: "hotly", // 移除 sort_by 参数
+      page: 1,
+      limit: 100
+    };
+    headers = {
+      "jdSignature": ReqDB.signature() // 保留 jdSignature
+    };
+
+
+    // ======================  请勿修改以下代码  ======================
+
+    if (!apiUrl) {
+      alert("请先配置测试场景!");
+      loadNode.style.setProperty("display", "none");
+      dataset.loaded = "false";
+      reviewsNode.innerHTML = renderCont("请先配置测试场景");
+      return;
+    }
+
+
+    const requestUrl = params ? `${apiUrl}?${new URLSearchParams(params).toString()}` : apiUrl;
+    const requestDetails = {
+      url: requestUrl,
+      method: "GET",
+      headers: headers,
+      onload: function(response) {
+        loadNode.style.setProperty("display", "none");
+        //console.log("请求 URL:", requestUrl);//
+       // console.log("响应状态:", response.status);//
+       // console.log("响应头:", response.responseHeaders);//
+       // console.log("响应体:", response.responseText);//
+        if (response.status === 200) {
+          try {
+            const data = JSON.parse(response.responseText);
+            const sources = data?.data?.reviews ?? []; //  **修改数据路径: data.data.reviews**
+            setReviews(sources);
+          } catch (e) {
+            console.error("JSON parse error:", e);
+            reviewsNode.innerHTML = renderCont("数据解析失败，请检查Console控制台输出");
+            dataset.loaded = "false";
+          }
+        } else {
+          console.error("API request failed:", response.status, response.statusText);
+          reviewsNode.innerHTML = renderCont(`读取失败 (HTTP ${response.status})，请检查Console控制台输出`);
+          dataset.loaded = "false";
+        }
+      },
+      onerror: function(error) {
+        loadNode.style.setProperty("display", "none");
+        console.error("GM_xmlhttpRequest error:", error);
+        reviewsNode.innerHTML = renderCont("读取失败 (网络错误)，请检查Console控制台输出");
+        dataset.loaded = "false";
+      }
+    };
+
+    GM_xmlhttpRequest(requestDetails);
+  };
+
+  const onclick = (e) => {
+    const target = e.target.closest("li");
+    if (!target) return;
+
+    const { dataset, classList } = target;
+    if (dataset.movieTabTarget !== "reviewTab") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (classList.contains("is-active")) return;
+
+    tabsNode.querySelector(".is-active").classList.remove("is-active");
+    classList.add("is-active");
+    showReviews(target);
+  };
+
+  tabsNode.addEventListener("click", onclick, true);
+})();
