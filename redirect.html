@@ -2,14 +2,14 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect Debug (Manual UTF-8 Encode)</title>
+    <title>URL Redirect Final Attempt (Encode-Decode-EUCJP)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2.0.0/encoding.min.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const keywords_utf8_encoded_raw = urlParams.get('keywords'); // 获取 *原始的* (未 URL 编码的) keywords
+        const keywords_utf8_encoded_raw = urlParams.get('keywords'); // 获取原始 keywords
         const baseUrl = urlParams.get('baseUrl');
 
         console.log("keywords_utf8_encoded_raw:", keywords_utf8_encoded_raw); // 输出原始 keywords
@@ -20,12 +20,21 @@
             const keywords_utf8_encoded = encodeURIComponent(keywords_utf8_encoded_raw);
             console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded); // 输出 UTF-8 URL 编码后的 keywords
 
-            const keywords_utf8_decoded = keywords_utf8_encoded; // *移除 decodeURIComponent()，直接使用 UTF-8 URL 编码后的字符串*
-            console.log("keywords_utf8_decoded (using encoded):", keywords_utf8_decoded); // 输出 (仍然是 encoded) keywords
+            // *对 UTF-8 URL 编码后的字符串进行 *URL 解码*！*
+            let keywords_utf16_decoded; // 注意变量名改为 keywords_utf16_decoded，表示 UTF-16 字符串
+            try {
+                keywords_utf16_decoded = decodeURIComponent(keywords_utf8_encoded); // *解码 UTF-8 URL 编码后的字符串*
+                console.log("keywords_utf16_decoded (after decodeURIComponent):", keywords_utf16_decoded); // 输出 *解码后的 UTF-16 字符串*
+            } catch (e) {
+                console.error("decodeURIComponent() error:", e);
+                document.body.innerText = "Error: decodeURIComponent() failed.";
+                return;
+            }
 
-            Encoding.convert(keywords_utf8_decoded, {
+
+            Encoding.convert(keywords_utf16_decoded, { // *使用 *解码后的 UTF-16 字符串*  作为输入*
                 to: 'EUCJP',
-                from: 'UTF8',
+                from: 'UTF8', // *from: 'UTF8' 仍然保持，因为 JavaScript 字符串本质上是 UTF-16，可以兼容 UTF-8 字符*
                 type: 'array'
             }, function(eucjp_bytes) {
                 console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes
