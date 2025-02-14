@@ -8,40 +8,33 @@
 <body>
     <script src="./encoding-japanese.min.js"></script>
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const keywords_utf8_encoded = urlParams.get('keywords');
-        const baseUrl = urlParams.get('baseUrl');
+    const urlParams = new URLSearchParams(window.location.search);
+    const baseUrl = urlParams.get('baseUrl');
+    let keywords_utf8_encoded = urlParams.get('keywords');
 
-        console.log("keywords_utf8_encoded:", keywords_utf8_encoded); // 输出 encoded keywords
-        console.log("baseUrl:", baseUrl); // 输出 baseUrl
+    console.log("原始encoded keywords:", keywords_utf8_encoded);
 
-        if (keywords_utf8_encoded && baseUrl) {
-            // *移除 decodeURIComponent() 解码步骤*
-            const keywords_utf8_decoded = keywords_utf8_encoded; // 直接使用 encoded keywords
-            console.log("keywords_utf8_decoded:", keywords_utf8_decoded); // 输出 (仍然是 encoded) keywords
+    if (keywords_utf8_encoded && baseUrl) {
+        // 先解码URL编码（扩展传过来的参数是URL编码过的）
+        const decodedKeywords = decodeURIComponent(keywords_utf8_encoded);
+        console.log("URL解码后的UTF-8字符串:", decodedKeywords);
 
-            const eucjp_bytes = Encoding.convert(keywords_utf8_decoded, {
-                to: 'EUCJP',
-                from: 'UTF8',
-                type: 'array'
-            });
-            console.log("eucjp_bytes:", eucjp_bytes); // 输出 EUC-JP bytes
+        // 将UTF-8字符串转换为EUC-JP字节数组
+        const eucjpBytes = Encoding.convert(Encoding.stringToCode(decodedKeywords), {
+            to: 'EUCJP',
+            from: 'UTF8',
+            type: 'array'
+        });
 
-            let keywords_eucjp_encoded = '';
-            for (let i = 0; i < eucjp_bytes.length; i++) {
-                keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
-            }
-            console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
+        // 将字节数组转换为%XX形式
+        const eucjpEncoded = eucjpBytes.map(b => '%' + b.toString(16).toUpperCase()).join('');
+        console.log("EUC-JP编码结果:", eucjpEncoded);
 
-            let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
-            console.log("finalUrl:", finalUrl); // 输出 final URL
-            console.log("window.location.href:", finalUrl); // 再次输出 final URL
-
-            window.location.href = finalUrl; // 执行跳转
-        } else {
-            document.body.innerText = "Error: Missing parameters.";
-            console.error("Error: Missing parameters.");
-        }
-    </script>
+        // 构造最终URL
+        const finalUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}keywords=${eucjpEncoded}`;
+        console.log("最终跳转URL:", finalUrl);
+        window.location.href = finalUrl;
+    }
+</script>
 </body>
 </html>
