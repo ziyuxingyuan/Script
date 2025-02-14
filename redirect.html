@@ -2,29 +2,26 @@
 <html>
 <head>
     <meta charset="UTF-8">
-        <title>URL Redirect Debug (EncodeURIComponent)</title>
+    <title>URL Redirect Debug (Manual UTF-8 Encode)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2.0.0/encoding.min.js"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const keywords_utf8_encoded = urlParams.get('keywords');
+        const keywords_utf8_encoded_raw = urlParams.get('keywords'); // 获取 *原始的* (未 URL 编码的) keywords
         const baseUrl = urlParams.get('baseUrl');
 
-        console.log("keywords_utf8_encoded:", keywords_utf8_encoded); // 输出 encoded keywords
+        console.log("keywords_utf8_encoded_raw:", keywords_utf8_encoded_raw); // 输出原始 keywords
         console.log("baseUrl:", baseUrl); // 输出 baseUrl
 
-        if (keywords_utf8_encoded && baseUrl) {
-            let keywords_utf8_decoded;
-            try {
-                keywords_utf8_decoded = decodeURIComponent(keywords_utf8_encoded); // *恢复 decodeURIComponent() 解码步骤*
-                console.log("keywords_utf8_decoded (after decodeURIComponent):", keywords_utf8_decoded); // 输出解码后的 keywords
-            } catch (e) {
-                console.error("decodeURIComponent() error:", e); // 输出解码错误信息
-                document.body.innerText = "Error: decodeURIComponent() failed.";
-                return; // 停止后续代码执行
-            }
+        if (keywords_utf8_encoded_raw && baseUrl) {
+            // *手动进行 UTF-8 URL 编码*
+            const keywords_utf8_encoded = encodeURIComponent(keywords_utf8_encoded_raw);
+            console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded); // 输出 UTF-8 URL 编码后的 keywords
+
+            const keywords_utf8_decoded = keywords_utf8_encoded; // *移除 decodeURIComponent()，直接使用 UTF-8 URL 编码后的字符串*
+            console.log("keywords_utf8_decoded (using encoded):", keywords_utf8_decoded); // 输出 (仍然是 encoded) keywords
 
             Encoding.convert(keywords_utf8_decoded, {
                 to: 'EUCJP',
