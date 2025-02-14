@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect Debug (Encoding)</title>
+        <title>URL Redirect Debug (EncodeURIComponent)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
@@ -16,17 +16,24 @@
         console.log("baseUrl:", baseUrl); // 输出 baseUrl
 
         if (keywords_utf8_encoded && baseUrl) {
-            const keywords_utf8_decoded = keywords_utf8_encoded; // 直接使用 encoded keywords
-            console.log("keywords_utf8_decoded (before convert):", keywords_utf8_decoded); // 输出解码前 (仍然是 encoded) keywords
+            let keywords_utf8_decoded;
+            try {
+                keywords_utf8_decoded = decodeURIComponent(keywords_utf8_encoded); // *恢复 decodeURIComponent() 解码步骤*
+                console.log("keywords_utf8_decoded (after decodeURIComponent):", keywords_utf8_decoded); // 输出解码后的 keywords
+            } catch (e) {
+                console.error("decodeURIComponent() error:", e); // 输出解码错误信息
+                document.body.innerText = "Error: decodeURIComponent() failed.";
+                return; // 停止后续代码执行
+            }
 
             Encoding.convert(keywords_utf8_decoded, {
                 to: 'EUCJP',
                 from: 'UTF8',
                 type: 'array'
-            }, function(eucjp_bytes) { // 使用异步回调函数
-                console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes (在回调函数中)
+            }, function(eucjp_bytes) {
+                console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes
 
-                if (eucjp_bytes && eucjp_bytes.length > 0) { // 检查 eucjp_bytes 是否有效
+                if (eucjp_bytes && eucjp_bytes.length > 0) {
                     let keywords_eucjp_encoded = '';
                     for (let i = 0; i < eucjp_bytes.length; i++) {
                         keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
