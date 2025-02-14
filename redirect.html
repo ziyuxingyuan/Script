@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect - Shift_JIS Encode</title>
+    <title>Minimal SJIS Test - No Redirect</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
@@ -10,43 +10,25 @@
     <script>
         (function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const keywords_utf8_decoded = urlParams.get('keywords'); // 获取 UTF-8 解码后的关键词 (Context Menu Search 扩展应该传递 UTF-8)
-            const baseUrl = urlParams.get('baseUrl');
+            const keywords_utf8_decoded = urlParams.get('keywords');
+            console.log("keywords_utf8_decoded:", keywords_utf8_decoded);
 
-            console.log("keywords_utf8_decoded:", keywords_utf8_decoded); // 输出 UTF-8 解码后的关键词
-            console.log("baseUrl:", baseUrl); // 输出 baseUrl
-
-            if (keywords_utf8_decoded && baseUrl) {
-                Encoding.convert(keywords_utf8_decoded, {
-                    to: 'SJIS', // *编码为 Shift_JIS*
-                    from: 'UTF8',
-                    type: 'array'
-                }, function(sjis_bytes) {
-                    console.log("sjis_bytes (callback):", sjis_bytes); // 输出 SJIS bytes
-
-                    if (sjis_bytes && sjis_bytes.length > 0) {
-                        let keywords_sjis_encoded = '';
-                        for (let i = 0; i < sjis_bytes.length; i++) {
-                            keywords_sjis_encoded += '%' + sjis_bytes[i].toString(16).toUpperCase();
-                        }
-                        console.log("keywords_sjis_encoded:", keywords_sjis_encoded); // 输出 Shift_JIS encoded keywords
-
-                        let finalUrl = baseUrl + '&keywords=' + keywords_sjis_encoded;
-                        console.log("finalUrl (SJIS encoded):", finalUrl); // 输出 final URL
-                        console.log("window.location.href:", finalUrl); // 再次输出 final URL
-
-                        window.location.href = finalUrl; // 执行跳转
-                    } else {
-                        console.error("SJIS encoding failed, sjis_bytes is empty or invalid.");
-                        document.body.innerText = "Error: SJIS encoding failed.";
+            Encoding.convert(keywords_utf8_decoded, {
+                to: 'SJIS',
+                from: 'UTF8',
+                type: 'array'
+            }, function(sjis_bytes) {
+                console.log("sjis_bytes (callback):", sjis_bytes);
+                let keywords_sjis_encoded = '';
+                if (sjis_bytes && sjis_bytes.length > 0) {
+                    for (let i = 0; i < sjis_bytes.length; i++) {
+                        keywords_sjis_encoded += '%' + sjis_bytes[i].toString(16).toUpperCase();
                     }
-                });
-
-            } else {
-                document.body.innerText = "Error: Missing parameters.";
-                console.error("Error: Missing parameters.");
-                return;
-            }
+                    console.log("keywords_sjis_encoded:", keywords_sjis_encoded);
+                } else {
+                    console.error("SJIS encoding failed.");
+                }
+            });
         })();
     </script>
 </body>
