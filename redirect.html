@@ -7,7 +7,7 @@
 </head>
 <body>
     <script src="./encoding-japanese.min.js"></script>
-    <script>
+<script>
     const urlParams = new URLSearchParams(window.location.search);
     const baseUrl = urlParams.get('baseUrl');
     let keywords_utf8_encoded = urlParams.get('keywords');
@@ -15,24 +15,25 @@
     console.log("原始encoded keywords:", keywords_utf8_encoded);
 
     if (keywords_utf8_encoded && baseUrl) {
-        // 先解码URL编码（扩展传过来的参数是URL编码过的）
-        const decodedKeywords = decodeURIComponent(keywords_utf8_encoded);
+        // 修正1：双重解码URL编码
+        const decodedKeywords = decodeURIComponent(decodeURIComponent(keywords_utf8_encoded));
         console.log("URL解码后的UTF-8字符串:", decodedKeywords);
 
-        // 将UTF-8字符串转换为EUC-JP字节数组
-        const eucjpBytes = Encoding.convert(Encoding.stringToCode(decodedKeywords), {
+        // 修正2：直接转换UNICODE字符串
+        const eucjpBytes = Encoding.convert(decodedKeywords, {
             to: 'EUCJP',
-            from: 'UTF8',
-            type: 'array'
+            from: 'UNICODE', // 关键修改点
+            type: 'string'
         });
 
-        // 将字节数组转换为%XX形式
-        const eucjpEncoded = eucjpBytes.map(b => '%' + b.toString(16).toUpperCase()).join('');
+        // 修正3：处理多字节编码
+        const eucjpEncoded = Array.from(eucjpBytes)
+            .map(b => '%' + b.toString(16).toUpperCase().padStart(2, '0'))
+            .join('');
+        
         console.log("EUC-JP编码结果:", eucjpEncoded);
 
-        // 构造最终URL
         const finalUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}keywords=${eucjpEncoded}`;
-        console.log("最终跳转URL:", finalUrl);
         window.location.href = finalUrl;
     }
 </script>
