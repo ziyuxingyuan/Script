@@ -2,45 +2,67 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect Debug</title>
+    <title>URL Redirect - Try No Extra Encode</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@2.0.0/encoding.min.js"></script>
     <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        const keywords_utf8_encoded = urlParams.get('keywords');
-        const baseUrl = urlParams.get('baseUrl');
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const keywords_utf8_encoded = urlParams.get('keywords'); // *直接获取 encoded keywords (假设 Context Menu Search 扩展已经 URL 编码)*
+            const baseUrl = urlParams.get('baseUrl');
 
-        console.log("keywords_utf8_encoded:", keywords_utf8_encoded); // 输出 encoded keywords
-        console.log("baseUrl:", baseUrl); // 输出 baseUrl
+            console.log("keywords_utf8_encoded:", keywords_utf8_encoded); // 输出 encoded keywords
+            console.log("baseUrl:", baseUrl); // 输出 baseUrl
 
-        if (keywords_utf8_encoded && baseUrl) {
-            let keywords_utf8_decoded = decodeURIComponent(keywords_utf8_encoded);
-            console.log("keywords_utf8_decoded:", keywords_utf8_decoded); // 输出 decoded keywords
+            if (keywords_utf8_encoded && baseUrl) {
+                // *去掉了手动 encodeURIComponent() 步骤*
+                // const keywords_utf8_encoded = encodeURIComponent(keywords_utf8_encoded_raw); //  *<--  删除此行*
+                // console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded); //  *<--  删除此行*
 
-            const eucjp_bytes = Encoding.convert(keywords_utf8_decoded, {
-                to: 'EUCJP',
-                from: 'UTF8',
-                type: 'array'
-            });
-            console.log("eucjp_bytes:", eucjp_bytes); // 输出 EUC-JP bytes
+                let keywords_utf16_decoded;
+                try {
+                    keywords_utf16_decoded = decodeURIComponent(keywords_utf8_encoded); // 对 *可能已经 URL 编码过* 的字符串进行 *URL 解码*
+                    console.log("keywords_utf16_decoded (after decodeURIComponent):", keywords_utf16_decoded); // 输出 UTF-16 解码后的关键词
+                } catch (e) {
+                    console.error("decodeURIComponent() error:", e);
+                    document.body.innerText = "Error: decodeURIComponent() failed.";
+                    return;
+                }
 
-            let keywords_eucjp_encoded = '';
-            for (let i = 0; i < eucjp_bytes.length; i++) {
-                keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
+
+                Encoding.convert(keywords_utf16_decoded, { // 使用 *UTF-16 解码后的字符串*
+                    to: 'EUCJP',
+                    from: 'UTF8',
+                    type: 'array'
+                }, function(eucjp_bytes) {
+                    console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes
+
+                    if (eucjp_bytes && eucjp_bytes.length > 0) {
+                        let keywords_eucjp_encoded = '';
+                        for (let i = 0; i < eucjp_bytes.length; i++) {
+                            keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
+                        }
+                        console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
+
+                        let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
+                        console.log("finalUrl:", finalUrl); // 输出 final URL
+                        console.log("window.location.href:", finalUrl); // 再次输出 final URL
+
+                        window.location.href = finalUrl; // 执行跳转
+                    } else {
+                        console.error("EUC-JP encoding failed, eucjp_bytes is empty or invalid.");
+                        document.body.innerText = "Error: EUC-JP encoding failed.";
+                    }
+                });
+
+            } else {
+                document.body.innerText = "Error: Missing parameters.";
+                console.error("Error: Missing parameters.");
+                return;
             }
-            console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
-
-            let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
-            console.log("finalUrl:", finalUrl); // 输出 final URL
-            console.log("window.location.href:", finalUrl); // 再次输出 final URL，确认跳转目标
-
-            window.location.href = finalUrl; // 执行跳转
-        } else {
-            document.body.innerText = "Error: Missing parameters.";
-            console.error("Error: Missing parameters."); // 输出错误信息到控制台
-        }
+        })();
     </script>
 </body>
 </html>
