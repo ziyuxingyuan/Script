@@ -2,34 +2,46 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Minimal SJIS Test - No Redirect</title>
+    <title>URL Redirect (GitHub Pages)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="./encoding-japanese.min.js"></script>
     <script>
-        (function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const keywords_utf8_decoded = urlParams.get('keywords');
-            console.log("keywords_utf8_decoded:", keywords_utf8_decoded);
+        const urlParams = new URLSearchParams(window.location.search);
+        const keywords_utf8_encoded = urlParams.get('keywords');
+        const baseUrl = urlParams.get('baseUrl');
 
-            Encoding.convert(keywords_utf8_decoded, {
-                to: 'SJIS',
+        console.log("keywords_utf8_encoded:", keywords_utf8_encoded); // 输出 encoded keywords
+        console.log("baseUrl:", baseUrl); // 输出 baseUrl
+
+        if (keywords_utf8_encoded && baseUrl) {
+            // *移除 decodeURIComponent() 解码步骤*
+            const keywords_utf8_decoded = keywords_utf8_encoded; // 直接使用 encoded keywords
+            console.log("keywords_utf8_decoded:", keywords_utf8_decoded); // 输出 (仍然是 encoded) keywords
+
+            const eucjp_bytes = Encoding.convert(keywords_utf8_decoded, {
+                to: 'EUCJP',
                 from: 'UTF8',
                 type: 'array'
-            }, function(sjis_bytes) {
-                console.log("sjis_bytes (callback):", sjis_bytes);
-                let keywords_sjis_encoded = '';
-                if (sjis_bytes && sjis_bytes.length > 0) {
-                    for (let i = 0; i < sjis_bytes.length; i++) {
-                        keywords_sjis_encoded += '%' + sjis_bytes[i].toString(16).toUpperCase();
-                    }
-                    console.log("keywords_sjis_encoded:", keywords_sjis_encoded);
-                } else {
-                    console.error("SJIS encoding failed.");
-                }
             });
-        })();
+            console.log("eucjp_bytes:", eucjp_bytes); // 输出 EUC-JP bytes
+
+            let keywords_eucjp_encoded = '';
+            for (let i = 0; i < eucjp_bytes.length; i++) {
+                keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
+            }
+            console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
+
+            let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
+            console.log("finalUrl:", finalUrl); // 输出 final URL
+            console.log("window.location.href:", finalUrl); // 再次输出 final URL
+
+            window.location.href = finalUrl; // 执行跳转
+        } else {
+            document.body.innerText = "Error: Missing parameters.";
+            console.error("Error: Missing parameters.");
+        }
     </script>
 </body>
 </html>
