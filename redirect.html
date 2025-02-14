@@ -2,24 +2,33 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Minimal Redirect - No Encoding</title>
+    <title>URL Redirect - UTF-8 Encode Only</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script>
         (function() {
             const urlParams = new URLSearchParams(window.location.search);
-            const keywords = urlParams.get('keywords');
+            const keywords_utf8_raw = urlParams.get('keywords'); // 获取原始关键词
             const baseUrl = urlParams.get('baseUrl');
 
-            const finalUrl = baseUrl + '&keywords=' + keywords; // *直接拼接关键词，不做任何编码*
+            console.log("keywords_utf8_raw:", keywords_utf8_raw); // 输出原始关键词
+            console.log("baseUrl:", baseUrl); // 输出 baseUrl
 
-            console.log("keywords (raw):", keywords);
-            console.log("baseUrl:", baseUrl);
-            console.log("finalUrl (no encoding):", finalUrl);
-            console.log("window.location.href:", finalUrl);
+            if (keywords_utf8_raw && baseUrl) {
+                const keywords_utf8_encoded = encodeURIComponent(keywords_utf8_raw); // *只进行 UTF-8 URL 编码*
+                console.log("keywords_utf8_encoded (after encodeURIComponent):", keywords_utf8_encoded); // 输出 UTF-8 URL 编码后的关键词
 
-            window.location.href = finalUrl; // 执行跳转
+                let finalUrl = baseUrl + '&keywords=' + keywords_utf8_encoded;
+                console.log("finalUrl (UTF-8 encoded):", finalUrl); // 输出 final URL
+                console.log("window.location.href:", finalUrl); // 再次输出 final URL
+
+                window.location.href = finalUrl; // 执行跳转
+            } else {
+                document.body.innerText = "Error: Missing parameters.";
+                console.error("Error: Missing parameters.");
+                return;
+            }
         })();
     </script>
 </body>
