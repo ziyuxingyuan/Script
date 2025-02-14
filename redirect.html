@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect (GitHub Pages)</title>
+    <title>URL Redirect Debug (Encoding)</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
@@ -16,28 +16,34 @@
         console.log("baseUrl:", baseUrl); // 输出 baseUrl
 
         if (keywords_utf8_encoded && baseUrl) {
-            // *移除 decodeURIComponent() 解码步骤*
             const keywords_utf8_decoded = keywords_utf8_encoded; // 直接使用 encoded keywords
-            console.log("keywords_utf8_decoded:", keywords_utf8_decoded); // 输出 (仍然是 encoded) keywords
+            console.log("keywords_utf8_decoded (before convert):", keywords_utf8_decoded); // 输出解码前 (仍然是 encoded) keywords
 
-            const eucjp_bytes = Encoding.convert(keywords_utf8_decoded, {
+            Encoding.convert(keywords_utf8_decoded, {
                 to: 'EUCJP',
                 from: 'UTF8',
                 type: 'array'
+            }, function(eucjp_bytes) { // 使用异步回调函数
+                console.log("eucjp_bytes (callback):", eucjp_bytes); // 输出 EUC-JP bytes (在回调函数中)
+
+                if (eucjp_bytes && eucjp_bytes.length > 0) { // 检查 eucjp_bytes 是否有效
+                    let keywords_eucjp_encoded = '';
+                    for (let i = 0; i < eucjp_bytes.length; i++) {
+                        keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
+                    }
+                    console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
+
+                    let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
+                    console.log("finalUrl:", finalUrl); // 输出 final URL
+                    console.log("window.location.href:", finalUrl); // 再次输出 final URL
+
+                    window.location.href = finalUrl; // 执行跳转
+                } else {
+                    console.error("EUC-JP encoding failed, eucjp_bytes is empty or invalid."); // 输出编码失败错误
+                    document.body.innerText = "Error: EUC-JP encoding failed.";
+                }
             });
-            console.log("eucjp_bytes:", eucjp_bytes); // 输出 EUC-JP bytes
 
-            let keywords_eucjp_encoded = '';
-            for (let i = 0; i < eucjp_bytes.length; i++) {
-                keywords_eucjp_encoded += '%' + eucjp_bytes[i].toString(16).toUpperCase();
-            }
-            console.log("keywords_eucjp_encoded:", keywords_eucjp_encoded); // 输出 EUC-JP encoded keywords
-
-            let finalUrl = baseUrl + '&keywords=' + keywords_eucjp_encoded;
-            console.log("finalUrl:", finalUrl); // 输出 final URL
-            console.log("window.location.href:", finalUrl); // 再次输出 final URL
-
-            window.location.href = finalUrl; // 执行跳转
         } else {
             document.body.innerText = "Error: Missing parameters.";
             console.error("Error: Missing parameters.");
