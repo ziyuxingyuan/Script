@@ -2,43 +2,48 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>URL Redirect (GitHub Pages)</title>
+    <title>URL Redirect (GitHub Pages) - EUC-JP Converter</title>
     <meta name="referrer" content="no-referrer">
 </head>
 <body>
     <script src="./encoding-japanese.min.js"></script>
 <script>
     const urlParams = new URLSearchParams(window.location.search);
-    const baseUrl = decodeURIComponent(urlParams.get('baseUrl')); // 增加baseUrl解码
-    const keywords = urlParams.get('keywords');
+    const baseUrl = decodeURIComponent(urlParams.get('baseUrl')); 
+    
+    // 扩展发送的是 keywords=%25E5%258C...
+    // urlParams.get('keywords') 会自动解码一次, 得到 %E5%8C...
+    const keywordsParamValue = urlParams.get('keywords'); 
+    console.log("接收到的参数值 (自动解码一次后):", keywordsParamValue); // 应显示 %E5%8C...
 
-    console.log("原始参数 keywords:", keywords);
+    if (keywordsParamValue && baseUrl) {
+        // 关键步骤：需要再次解码, 将 %E5%8C... 转回原始字符串 "北岡果林"
+        const decodedKeywords = decodeURIComponent(keywordsParamValue); 
+        console.log("完全解码后的文本:", decodedKeywords); // 应显示 北岡果林
 
-    if (keywords && baseUrl) {
-        // 关键修正：单次解码即可
-        const decodedKeywords = decodeURIComponent(keywords);
-        console.log("解码后文本:", decodedKeywords);
-
-        // 使用正确编码转换方式
+        // 使用 encoding.js 将原始字符串从 UNICODE (JS内部表示) 转换为 EUC-JP
         const eucArray = Encoding.convert(
             Encoding.stringToCode(decodedKeywords), // 字符串转Unicode代码点数组
             {
-                from: 'UNICODE', // 明确指定源格式
-                to: 'EUCJP',
-                type: 'array'    // 确保返回字节数组
+                from: 'UNICODE', 
+                to: 'EUCJP',     // 目标是 EUC-JP
+                type: 'array'    
             }
         );
 
-        // 字节处理强化
+        // 将 EUC-JP 字节数组转换为 %XX 形式 (单次编码)
         const eucEncoded = eucArray.map(b => 
-            '%' + b.toString(16).toUpperCase().padStart(2, '0') // 强制两位十六进制
+            '%' + b.toString(16).toUpperCase().padStart(2, '0') 
         ).join('');
 
-        console.log("正确EUC编码:", eucEncoded); // 应显示%A4%A6%A4%F3%A4%D1%A4%A4
+        console.log("转换后的 EUC-JP 编码:", eucEncoded); // 应显示 %CB%CC%B2%AC%B2%CC%CE%D3
 
-        // 构造最终URL（注意baseUrl可能已含参数）
+        // 构造最终URL
         const finalUrl = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}keywords=${eucEncoded}`;
+        console.log("最终跳转 URL (EUC-JP):", finalUrl);
         window.location.href = finalUrl;
+    } else {
+        console.error("缺少 baseUrl 或 keywords 参数");
     }
 </script>
 
