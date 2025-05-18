@@ -1,15 +1,15 @@
 // ==UserScript==
-// @name            JavDB短评显示 (增强版)
+// @name            JavDB短评显示
 // @namespace       JavDB短评显示
-// @version         1.3
+// @version         1.5.1
 // @author          ziyuxingyuan
-// @description     JavDB短评完整显示，集成增强样式，自动重试+高性能签名缓存
+// @description     JavDB短评完整显示，集成增强样式，客户端分页显示评论，点击翻页自动回顶部，自动重试+高性能签名缓存
 // @match           https://javdb.com/v/*
 // @icon            https://javdb.com/favicon.ico
 // @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.Req.lib.js
 // @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.ReqDB.lib.js
 // @require         https://github.com/bolin-dev/JavPack/raw/main/libs/JavPack.Util.lib.js
-// @connect         jdforrepam.com
+// @connect         jdforrepam.com // <--- 如果API域名变动，这里也需要手动修改!
 // @connect         javdb.com
 // @run-at          document-end
 // @grant           GM_xmlhttpRequest
@@ -21,17 +21,24 @@
 // @require         https://github.com/Tampermonkey/utils/raw/d8a4543a5f828dfa8eefb0a3360859b6fe9c3c34/requires/gh_2215_make_GM_xhr_more_parallel_again.js
 // ==/UserScript==
 
-// 确保 JavPack 库的存储机制正常工作
-Util.upStore();
+// === 配置区域 ===
+// API域名，如果jdforrepam.com变动，请修改此处
+const apiDomain = 'jdforrepam.com';
+// 客户端每页显示的评论数量
+const commentsPerPage = 50;
+// API单页获取评论数量 (用于一次API请求尽量多获取数据)
+const apiPageLimit = 100; // 沿用之前设置的100
+// === 配置区域结束 ===
+
+Util.upStore(); // 确保 JavPack 库的存储机制正常工作
 
 (function () {
-  // 使用您原脚本的高性能签名缓存优化
+  // 签名缓存优化
   const SIGN_CACHE = {
     lastTs: 0,
     signature: '',
     get() {
       const now = Math.floor(Date.now() / 1000);
-      // 签名有效期稍微放宽到 20 秒，以防网络波动
       return (now - this.lastTs <= 20) ? this.signature : null;
     },
     set(sign) {
@@ -40,95 +47,78 @@ Util.upStore();
     }
   };
 
-  // 使用您原脚本的签名获取逻辑，结合缓存
+  // 高性能签名获取
   const getOptimizedSignature = () => {
     const cachedSign = SIGN_CACHE.get();
-    if (cachedSign) {
-      // console.log("使用缓存签名"); // 调试用
-      return cachedSign;
-    }
-
-    // console.log("生成新签名"); // 调试用
-    const sign = ReqDB.signature(); // 仍然使用原库方法获取原始签名
-    SIGN_CACHE.set(sign); // 缓存新签名
+    if (cachedSign) return cachedSign;
+    const sign = ReqDB.signature();
+    SIGN_CACHE.set(sign);
     return sign;
   };
 
-  // 获取影片ID，这是请求短评的关键
+  // 获取影片ID
   const mid = unsafeWindow.appData?.split("/").at(-1);
-  if (!mid) {
-      console.error("JavDB短评显示增强版: 无法获取影片ID");
-      return; // 如果没有影片ID，脚本就没必要运行了
-  }
+  if (!mid) return;
 
   // 获取页面上的关键DOM节点
   const tabsNode = document.querySelector(".tabs.no-bottom");
   const magnetsNode = document.querySelector("#magnets");
   const reviewsNode = document.querySelector("#reviews");
   const listsNode = document.querySelector("#lists");
-  // 使用您脚本中定义的加载节点
   const loadNode = document.querySelector("#tabs-container > article");
 
-  // 定义重试相关的变量，沿用您原脚本的健壮机制
-  let retryCount = 0;
-  const maxRetries = 60; // 最多重试次数
+  // 分页和加载状态
+  let allReviews = []; // 存储所有页获取到的评论 (API加载完成后包含所有数据)
+  let currentApiPage = 1; // 当前正在请求的API页码 (从1开始)
+  let currentDisplayPage = 1; // 当前正在显示的客户端页码 (从1开始)
+  let retryCount = 0; // 当前API页的重试计数
+  const maxRetries = 60; // 最大API请求重试次数
   let retryTimer = null; // 重试定时器
   let lastRequestTime = 0; // 上次请求时间，用于控制请求频率
+  let isFetchingApi = false; // 标记是否正在进行API加载
 
-  // 渲染容器的函数，沿用您原脚本的
+  // 渲染容器
   const renderCont = (insert) => {
     return `<article class="message video-panel"><div class="message-body">${insert}</div></article>`;
   };
 
-  // === 引入同事脚本中更详细的单个评论渲染函数 ===
-  // 这个函数负责将一个评论数据对象转换为HTML字符串
+  // 渲染单个评论
   const renderReview = (review) => {
-      // 确保review对象和其属性存在，增加健壮性
       if (!review) return '';
 
-      const username = review.username || '匿名用户'; // 获取用户名，或使用 "匿名用户" 作为默认值
-      const content = review.content || '无内容'; // 获取短评内容
-      const score = review.score ?? 0; // 获取评分，默认为0
-      const likesCount = review.likes_count ?? 0; // 获取点赞数，默认为0
-      const createdAt = review.created_at; // 获取创建时间
+      const username = review.username || '匿名用户';
+      const content = review.content || '无内容';
+      const score = review.score ?? 0;
+      const likesCount = review.likes_count ?? 0;
+      const createdAt = review.created_at;
 
-      // 生成评分星星的HTML
       let stars = '';
-      // 确保评分在合理范围内（0-5）
-      const safeScore = Math.max(0, Math.min(5, Math.round(score))); // 四舍五入取整，并限制在0-5
+      const safeScore = Math.max(0, Math.min(5, Math.round(score)));
       for (let i = 0; i < safeScore; i++) {
-          stars += '<i class="icon-star"></i>'; // 实心星星
+          stars += '<i class="icon-star"></i>';
       }
       for (let i = safeScore; i < 5; i++) {
-          stars += '<i class="icon-star gray"></i>'; // 灰色空心星星
+          stars += '<i class="icon-star gray"></i>';
       }
 
-      // 格式化时间字符串，处理可能的格式差异或缺失
       let formattedTime = '未知时间';
       if (createdAt) {
           try {
-               // 尝试解析ISO 8601格式并格式化
-              const date = new Date(createdAt);
-              // 检查是否是有效日期
-              if (!isNaN(date.getTime())) {
-                 // 格式化为 "YYYY-MM-DD HH:mm:ss" 或类似格式
-                 // 这里简单移除T和Z，如果需要更复杂的格式化，可以使用更强大的日期库或手动处理
-                 formattedTime = createdAt.replace("T", " ").replace(".000Z", "").split('.')[0]; // 移除毫秒部分
-              } else {
-                 formattedTime = createdAt; // 如果解析失败，显示原始字符串
-              }
+             const date = new Date(createdAt);
+             if (!isNaN(date.getTime())) {
+                formattedTime = createdAt.replace("T", " ").replace(".000Z", "").split('.')[0];
+             } else {
+                formattedTime = createdAt;
+             }
           } catch (e) {
               console.error("时间格式化错误:", e, "原始时间:", createdAt);
-              formattedTime = createdAt; // 出现异常也显示原始字符串
+              formattedTime = createdAt;
           }
       }
 
-
-      // 构建单个评论的HTML结构，沿用同事脚本的样式
       return `<dt class="review-item">
                   <div class="review-title">
                       <div class="likes is-pulled-right">
-                          <!-- 点赞按钮，这里仅显示数量，点赞功能需要额外的API和逻辑 -->
                           <button title="贊" class="button is-small is-info" disabled>
                               <span class="label">贊</span>
                               <span class="likes-count">${likesCount}</span>
@@ -140,199 +130,295 @@ Util.upStore();
                   </div>
                   <div class="content" style="white-space: pre-line"> <p>${content}</p> </div>
               </dt>`;
-      // 注意：点赞按钮目前是禁用的(disabled)，因为点赞功能需要额外的API交互，超出了本次整合范围。
   };
-  // === 引入结束 ===
+
+  // 渲染分页导航按钮
+  const renderPaginationControls = (totalComments, currentPage, commentsPerPage, isApiLoading) => {
+      if (totalComments === 0 && !isApiLoading) return ''; // 没有评论且API加载完成才不显示分页
+
+      const totalPages = Math.ceil(totalComments / commentsPerPage);
+      // 只有一页或没有评论 (但可能还在加载) 时不显示分页
+      if (totalPages <= 1 && !isApiLoading) return '';
 
 
-  // === 修改您原脚本的 setReviews 函数，使用新的 renderReview 函数 ===
-  // 这个函数负责接收API返回的评论数据数组，并将其整体渲染到页面上
-  const setReviews = (sources) => {
-    let domStr = "暂无数据"; // 默认显示“暂无数据”
+      const prevDisabled = currentPage === 1 || isApiLoading ? 'is-disabled' : '';
+      const nextDisabled = currentPage === totalPages || isApiLoading ? 'is-disabled' : '';
 
-    if (sources && sources.length > 0) {
-      // 如果有评论数据，使用 renderReview 函数映射每个评论，生成HTML数组
-      // 然后将HTML数组拼接起来，并用 <dl class="review-items"> 标签包裹
-      domStr = `<dl class="review-items">${sources.map(renderReview).join("")}</dl>`;
-    }
+      // 页面信息显示
+      let pageInfo = `第 ${currentPage} / ${totalPages} 页`;
+      if (isApiLoading) {
+          pageInfo = `已加载 ${totalComments} 条 (加载中...)`; // API加载中只显示已加载数量
+      } else if (totalPages > 0) {
+           pageInfo = `第 ${currentPage} / ${totalPages} 页 (共 ${totalComments} 条)`;
+      } else if (totalComments > 0 && totalPages === 0) { // 理论上不会发生，除非 commentsPerPage 是 Infinity 或负数
+             pageInfo = `共 ${totalComments} 条`;
+      }
 
-    // 将生成的HTML内容插入到 reviewsNode 中，并包裹在 renderCont 容器里
-    // 在插入之前，确保reviewsNode是清空的，这在showReviews中已经做了
-    reviewsNode.innerHTML = renderCont(domStr);
 
-    // 数据加载成功后，清除重试定时器（如果存在）
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
+      // 使用flex布局让按钮居中
+      return `
+          <div class="pagination-controls" style="display: flex; justify-content: center; align-items: center; margin-top: 1em;">
+              <button class="button pagination-button" data-action="prev" ${prevDisabled}>上一页</button>
+              <span style="margin: 0 1em;">${pageInfo}</span>
+              <button class="button pagination-button" data-action="next" ${nextDisabled}>下一页</button>
+          </div>
+      `;
   };
-  // === 修改结束 ===
+
+  // 处理分页按钮点击事件
+  const handlePaginationClick = (event) => {
+      const target = event.target.closest('.pagination-button');
+      if (!target || target.classList.contains('is-disabled') || isFetchingApi) return; // 如果正在请求API，禁用点击
+
+      const action = target.dataset.action;
+      const totalPages = Math.ceil(allReviews.length / commentsPerPage); // 总页数基于已加载评论数
+
+      if (action === 'prev' && currentDisplayPage > 1) {
+          currentDisplayPage--;
+          displayCurrentPageReviews(); // 显示上一页内容
+      } else if (action === 'next' && currentDisplayPage < totalPages) {
+          currentDisplayPage++;
+          displayCurrentPageReviews(); // 显示下一页内容
+      }
+      // 注意：在这个版本（1.5改），点击下一页不会触发新的API请求，只会内部翻页
+  };
+
+  // 显示当前客户端页码的评论
+  const displayCurrentPageReviews = () => {
+      const startIndex = (currentDisplayPage - 1) * commentsPerPage;
+      const endIndex = startIndex + commentsPerPage;
+      const commentsToDisplay = allReviews.slice(startIndex, endIndex);
+
+      let domStr = ""; // 初始化为空字符串
+
+      if (allReviews.length > 0) { // 只要总评论数大于0，就显示评论列表容器
+          domStr = `<dl class="review-items">${commentsToDisplay.map(renderReview).join("")}</dl>`;
+      } else if (!isFetchingApi) { // 如果没有加载到任何评论，且API加载已完成
+           domStr = "暂无数据";
+      }
+      // 如果正在加载中，domStr保持为空，加载提示会显示在容器里
 
 
-  // === 沿用您原脚本的 fetchReviews 函数，使用GM_xmlhttpRequest和重试机制 ===
-  // 这个函数负责实际向API发起请求获取数据
-  const fetchReviews = () => {
-    // 实现请求间隔限制，避免过于频繁的请求
-    const now = Date.now();
-    if (now - lastRequestTime < 300) { // 限制两次请求至少间隔 300 毫秒
-      // 如果间隔不足，延迟一段时间后再次尝试发起请求
-      setTimeout(fetchReviews, 300 - (now - lastRequestTime));
-      return;
-    }
-    lastRequestTime = now; // 更新上次请求时间
+      // 渲染评论列表和分页导航
+      reviewsNode.innerHTML = renderCont(domStr + renderPaginationControls(allReviews.length, currentDisplayPage, commentsPerPage, isFetchingApi));
 
-    // API 地址和参数，沿用同事脚本中用于获取详细数据的参数
-    // 注意：这里使用了同事脚本中的 limit: 100 和 sort_by: "hotly"
-    const apiUrl = `https://jdforrepam.com/api/v1/movies/${mid}/reviews`;
-    const params = {
-        sort_by: "hotly", // 按热度排序，这可能与点赞数等信息相关
-        page: 1,
-        limit: 100 // 获取更多评论
-    };
+      // 重新绑定分页按钮事件监听 (innerHTML会清除之前的监听器)
+      const paginationControls = reviewsNode.querySelector('.pagination-controls');
+      if(paginationControls) {
+          paginationControls.addEventListener('click', handlePaginationClick);
+      }
 
-    // 使用您原脚本的高性能签名获取函数
-    const signature = getOptimizedSignature();
-    if (!signature) {
-         // 如果签名获取失败（极少发生，但作为健壮性考虑），可以尝试重试或报错
-         handleError("签名获取失败");
+      console.log(`JavDB短评显示增强版: 显示客户端第 ${currentDisplayPage} 页评论 (${commentsToDisplay.length} 条)，API加载状态: ${isFetchingApi ? '进行中' : '完成'}，共 ${allReviews.length} 条评论。`);
+
+      // === 新增：滚动到评论区域顶部 ===
+      // 使用 requestAnimationFrame 确保 DOM 更新完成后再滚动，提高平滑度
+      requestAnimationFrame(() => {
+           reviewsNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      // === 新增结束 ===
+  };
+
+
+  // 完成API加载，显示第一页评论
+  const finishFetchingApi = () => {
+      isFetchingApi = false; // API加载完成
+      loadNode.style.setProperty("display", "none"); // 隐藏主加载提示
+
+      if (allReviews.length === 0) {
+           reviewsNode.innerHTML = renderCont("暂无数据");
+           console.log("JavDB短评显示增强版: API加载完成，无评论数据。");
+           return;
+      }
+
+      console.log(`JavDB短评显示增强版: API加载完成，共获取 ${allReviews.length} 条评论。`);
+      currentDisplayPage = 1; // API加载完毕后，默认显示第一页客户端分页
+      displayCurrentPageReviews(); // 显示第一页评论和分页导航
+  };
+
+  // 处理单页API数据并决定是否继续加载下一页API
+  const processApiPage = (reviews, pageFetched) => {
+      if (reviews && reviews.length > 0) {
+          allReviews = allReviews.concat(reviews); // 合并当前页评论到总列表
+          currentApiPage++; // 准备加载下一页API数据
+          retryCount = 0; // 当前API页成功，重置下一页的重试计数
+
+          // 更新加载提示，显示已加载数量和当前API页码
+          reviewsNode.innerHTML = renderCont(`正在加载短评... 已加载 ${allReviews.length} 条 (API页 ${pageFetched})`);
+
+          // 继续加载下一页API数据
+          fetchReviews(currentApiPage);
+      } else {
+          // 当前API页没有返回评论，说明已经加载完毕所有API数据
+          finishFetchingApi(); // 完成API加载，显示客户端分页
+      }
+  };
+
+  // 错误处理和重试 (现在针对单页API请求)
+  const handleError = (msg, error, pageWithError) => {
+    console.error(`JavDB短评显示增强版错误 (API页 ${pageWithError}): ${msg}`, error);
+
+    // 如果是签名获取失败，停止整个流程
+    if (msg.includes("签名获取失败")) {
+         reviewsNode.innerHTML = renderCont(`加载失败：${msg}，请刷新页面`);
+         loadNode.style.setProperty("display", "none");
+         isFetchingApi = false; // 停止加载
+         if (retryTimer) clearTimeout(retryTimer);
          return;
     }
 
-    // 发起 GM_xmlhttpRequest 请求
-    GM_xmlhttpRequest({
-      url: `${apiUrl}?${new URLSearchParams(params).toString()}`, // 拼接URL和参数
-      method: "GET",
-      headers: { "jdSignature": signature }, // 添加签名头部
-      timeout: 8000, // 设置请求超时时间为 8 秒 (沿用原脚本的超时时间或稍微调整)
-      onload: function(response) {
-        // 请求成功返回
-        loadNode.style.setProperty("display", "none"); // 隐藏加载提示
+    // 如果当前API页重试次数达到上限
+    if (retryCount >= maxRetries) {
+        // 停止加载后续页，显示已加载部分和错误信息
+        let errorMsg = `加载部分完成 (${allReviews.length} 条)，API页 ${pageWithError} 加载失败：${msg}，请刷新页面重试`;
+        reviewsNode.innerHTML = renderCont(errorMsg); // 先显示错误信息
 
+        loadNode.style.setProperty("display", "none");
+        isFetchingApi = false; // 停止加载
+        if (retryTimer) clearTimeout(retryTimer);
+
+        // 即使加载失败，也尝试显示已获取的评论（如果存在）
+        if (allReviews.length > 0) {
+            // 显示已加载数据的最后一页
+            currentDisplayPage = Math.max(1, Math.ceil(allReviews.length / commentsPerPage));
+             displayCurrentPageReviews(); // 重新渲染，这次会包含分页和已加载数据
+             // 在评论下方再次添加错误信息，更醒目
+             const existingContent = reviewsNode.querySelector('.message-body');
+             if(existingContent) {
+                 existingContent.innerHTML += `<p style="color: red; margin-top: 1em;">API加载未完成，部分数据获取失败：${msg}</p>`;
+             }
+        } else {
+            // 没有加载到任何数据
+            reviewsNode.innerHTML = renderCont(`加载失败：${msg}，请刷新页面重试`);
+        }
+
+        return;
+    }
+
+    // 增加当前API页的重试计数
+    retryCount++;
+    // 计算下一次重试的延迟时间
+    const delay = Math.min(1500 * Math.pow(1.5, retryCount - 1), 15000); // 指数退避
+
+    // 更新加载提示，显示重试信息
+    reviewsNode.innerHTML = renderCont(`正在加载短评... 已加载 ${allReviews.length} 条。API页 ${pageWithError} ${msg}，${Math.ceil(delay/1000)}秒后重试 (${retryCount}/${maxRetries})`);
+
+    // 设置定时器，重试加载失败的那一页API数据
+    retryTimer = setTimeout(() => fetchReviews(pageWithError), delay);
+  };
+
+
+  // 获取评论数据 (现在接受页码参数，用于API请求)
+  const fetchReviews = (pageToFetch) => {
+    // 请求间隔限制
+    const now = Date.now();
+    if (now - lastRequestTime < 300) {
+      setTimeout(() => fetchReviews(pageToFetch), 300 - (now - lastRequestTime));
+      return;
+    }
+    lastRequestTime = now;
+
+    // 标记正在请求API
+    isFetchingApi = true;
+    // 更新加载提示 (fetchReviews 调用前已更新，这里无需重复)
+
+
+    // 使用顶部的apiDomain变量构建URL
+    const apiUrl = `https://${apiDomain}/api/v1/movies/${mid}/reviews`;
+    const params = {
+        sort_by: "hotly",
+        page: pageToFetch, // 使用传入的API页码
+        limit: apiPageLimit // 使用配置的API单页限制
+    };
+
+    const signature = getOptimizedSignature();
+    if (!signature) {
+         handleError("签名获取失败", null, pageToFetch);
+         return;
+    }
+
+    GM_xmlhttpRequest({
+      url: `${apiUrl}?${new URLSearchParams(params).toString()}`,
+      method: "GET",
+      headers: { "jdSignature": signature },
+      timeout: 8000,
+      onload: function(response) {
         if (response.status === 200) {
           try {
-            // 尝试解析JSON响应
             const data = JSON.parse(response.responseText);
-            // 调用 setReviews 函数处理并显示数据
-            // 确保数据结构正确，访问 data.data.reviews
-            setReviews(data?.data?.reviews ?? []);
+            // 处理当前页API数据，并决定是否加载下一页API数据
+            processApiPage(data?.data?.reviews ?? [], pageToFetch);
           } catch (e) {
-            // JSON解析失败
-            handleError("数据解析失败", e);
+            handleError("数据解析失败", e, pageToFetch);
           }
         } else {
-          // HTTP状态码不是200
-          handleError(`API请求失败: HTTP ${response.status}`);
+          handleError(`API请求失败: HTTP ${response.status}`, null, pageToFetch);
         }
       },
       onerror: function(error) {
-        // 网络错误，如无法连接到服务器
-        handleError("网络请求错误", error);
+        handleError("网络请求错误", error, pageToFetch);
       },
       ontimeout: function() {
-        // 请求超时
-        handleError("请求超时");
+        handleError("请求超时", null, pageToFetch);
       }
     });
   };
-  // === 沿用结束 ===
 
 
-  // === 沿用您原脚本的 handleError 函数，实现错误处理和重试逻辑 ===
-  // 这个函数负责处理请求过程中遇到的错误，并根据重试次数决定是否再次尝试
-  const handleError = (msg, error) => {
-    console.error(`JavDB短评显示增强版错误: ${msg}`, error); // 记录错误信息到控制台
-
-    loadNode.style.setProperty("display", "none"); // 隐藏加载提示
-
-    // 检查是否达到最大重试次数
-    if (retryCount >= maxRetries) {
-      // 达到最大次数，显示最终失败信息
-      reviewsNode.innerHTML = renderCont(`加载失败，请刷新页面或稍后再试。<br>错误信息: ${msg}`);
-      if (retryTimer) {
-         clearTimeout(retryTimer); // 清除任何待执行的重试定时器
-         retryTimer = null;
-      }
-      return; // 停止重试
-    }
-
-    // 增加重试计数
-    retryCount++;
-    // 计算下一次重试的延迟时间，使用指数退避策略，并在一定范围内限制（例如，1.5秒到15秒）
-    const delay = Math.min(1500 * Math.pow(1.5, retryCount - 1), 15000); // 初始延迟1.5秒，最大延迟15秒
-
-    // 在页面上显示错误信息和重试提示
-    reviewsNode.innerHTML = renderCont(`${msg}，${Math.ceil(delay/1000)}秒后重试 (${retryCount}/${maxRetries})`);
-
-    // 设置定时器，延迟一段时间后再次调用 fetchReviews 函数
-    retryTimer = setTimeout(fetchReviews, delay);
-  };
-  // === 沿用结束 ===
-
-
-  // === 沿用您原脚本的 showReviews 函数，控制页面元素的显示和数据加载触发 ===
-  // 这个函数在用户点击“短评”tab时被调用
+  // 显示评论区域并触发加载
   const showReviews = ({ dataset }) => {
-    // 隐藏其他tab的内容，显示reviewsNode
     magnetsNode.style.display = "none";
     listsNode.style.display = "none";
     reviewsNode.style.display = "block";
 
-    // 检查是否已经加载过数据，如果已加载则直接返回，避免重复请求
-    if (dataset.loaded === "true") {
-        // console.log("短评已加载，跳过重复请求"); // 调试用
+    // 如果正在进行API加载，则直接返回，避免重复触发
+    if (isFetchingApi) {
+        console.log("JavDB短评显示增强版: 正在进行API加载，跳过重复触发。");
         return;
     }
-    // 标记为已开始加载
-    dataset.loaded = "true";
 
-    // 清空reviewsNode的内容，准备显示加载提示或新数据
-    reviewsNode.innerHTML = "";
-    // 显示加载提示
-    loadNode.style.display = "block";
+    // 如果已经加载过任何评论数据，直接显示当前客户端页
+    if (allReviews.length > 0) {
+        console.log(`JavDB短评显示增强版: 已加载 ${allReviews.length} 条评论，直接显示客户端第 ${currentDisplayPage} 页。`);
+        displayCurrentPageReviews();
+        return;
+    }
 
-    // 重置重试计数
-    retryCount = 0;
-    // 触发数据获取流程
-    fetchReviews();
+    // 首次加载：重置所有状态变量
+    allReviews = []; // 清空之前的数据
+    currentApiPage = 1; // 从第一页API开始请求
+    currentDisplayPage = 1; // 客户端显示从第一页开始
+    retryCount = 0; // 重置第一页API的重试计数
+    isFetchingApi = true; // 标记开始API加载
+
+    reviewsNode.innerHTML = ""; // 清空旧内容
+    loadNode.style.display = "block"; // 显示主加载提示
+    reviewsNode.innerHTML = renderCont(`正在加载短评...`); // 初始加载提示
+
+    console.log("JavDB短评显示增强版: 开始API分页加载短评...");
+    // 从第一页API开始加载 (API页码从1开始)
+    fetchReviews(currentApiPage);
   };
-  // === 沿用结束 ===
 
-
-  // === 沿用您原脚本的 onclick 函数，处理tab点击事件 ===
-  // 这个函数监听tab容器的点击事件，判断是否点击了短评tab
+  // Tab点击事件处理
   const onclick = (e) => {
-    // 找到被点击的tab元素
     const target = e.target.closest("li");
-    // 如果没有找到有效的tab元素，则忽略
     if (!target) return;
 
     const { dataset, classList } = target;
-    // 检查被点击的tab是否是短评tab (通过 data-movie-tab-target 属性判断)
     if (dataset.movieTabTarget !== "reviewTab") return;
 
-    // 阻止默认的链接跳转行为和事件冒泡
     e.preventDefault();
     e.stopPropagation();
-
-    // 如果点击的已经是当前激活的tab，则忽略
     if (classList.contains("is-active")) return;
 
-    // 移除当前激活tab的样式
     tabsNode.querySelector(".is-active").classList.remove("is-active");
-    // 给短评tab添加激活样式
     classList.add("is-active");
-
-    // 调用 showReviews 函数来显示短评内容和触发数据加载
     showReviews(target);
   };
-  // === 沿用结束 ===
 
-  // === 脚本初始化 ===
-  // 在脚本加载完成后，为tabs容器添加点击事件监听器
-  // 使用 capture 阶段 (true) 确保我们的监听器在内部元素的点击事件之前执行
+  // 初始化：添加Tab点击事件监听
   if (tabsNode) {
       tabsNode.addEventListener("click", onclick, true);
-      // console.log("JavDB短评显示增强版: 事件监听已添加"); // 调试用
   } else {
       console.error("JavDB短评显示增强版: 未找到tabs容器");
   }
