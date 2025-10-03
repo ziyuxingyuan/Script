@@ -20,22 +20,16 @@ class ReqTrailer extends Req {
           const samples = [src, ...bitrates.map((it) => it.src)].filter((item) => item && item.endsWith(".mp4"));
           if (!samples.length) throw new Error("Not found mp4");
 
-          // ==================== 老板，这是完全遵照您指示的精准优化！ ====================
           const uniqueSamples = [...new Set(samples)];
           
-          // 1. 精准查找您指定的 'hmb.mp4' 画质
           const hmbSource = uniqueSamples.find(s => s && s.includes('hmb.mp4'));
 
           if (hmbSource) {
-            // 2. 如果找到了，就把它强制置顶，其他画质（包括4k）都靠后站！
-            // 这样播放器就会永远优先加载 hmb 画质。
             const otherSources = uniqueSamples.filter(s => s !== hmbSource);
             return [hmbSource, ...otherSources];
           }
 
-          // 3. 如果没找到 'hmb.mp4'，就返回原始列表，保证视频总能播放，程序绝不崩溃！
           return uniqueSamples;
-          // ========================== 精准优化结束 ==========================
         },
       },
       {
@@ -111,7 +105,6 @@ class ReqTrailer extends Req {
   static useStudio() {
     const sampleUrl = "https://smovie.$host/sample/movies/$code/%s.mp4";
     
-    // 这里的逻辑依然保持不变，优先尝试 'hmb'，完全符合您的要求。
     const resolutions = ["hmb", "1080p", "720p", "480p", "360p", "240p"];
 
     const getSamples = (code, host) => {
@@ -157,25 +150,25 @@ class ReqTrailer extends Req {
       {
         studios: ["muramura"],
         samples: (code) => getSamples(code, "muramura.tv"),
-      },
-      {
-        studios: ["10musume"， "天然むすめ"]，
-        samples: (code) => getSamples(code, "10musume.com"),
       }，
       {
-        studios: ["Caribbeancom", "加勒比", "カリビアンコム"],
-        samples: (code) => getSamples(code， "caribbeancom.com")，
+        studios: ["10musume", "天然むすめ"],
+        samples: (code) => getSamples(code， "10musume.com")，
       },
+      {
+        studios: ["Caribbeancom", "加勒比", "カリビアンコム"],
+        samples: (code) => getSamples(code, "caribbeancom.com"),
+      }，
     ];
 
     return async (code, studio) => {
       if (!studio) throw new Error("Studio is required");
-      studio = studio.toUpperCase();
+      studio = studio。toUpperCase();
 
       const samples = rules.find(({ studios }) => studios.some((st) => st.toUpperCase() === studio))?.samples(code);
       if (!samples?.length) throw new Error("Not found samples");
 
-      const results = await Promise。allSettled(samples。map((url) => this.request({ method: "HEAD"， url })));
+      const results = await Promise.allSettled(samples.map((url) => this.request({ method: "HEAD", url })));
       const sources = results.filter(({ status }) => status === "fulfilled").map(({ value }) => value);
       if (!sources.length) throw new Error("Not found sources");
 
@@ -183,13 +176,13 @@ class ReqTrailer extends Req {
     };
   }
 
-  static getTrailer({ isVR, isFC2, isWestern, isUncensored, code, title, studio }) {
+  static getTrailer({ isVR， isFC2, isWestern, isUncensored, code, title， studio }) {
     if (isFC2) {
-      throw new Error("Not Supported FC2");
+      throw new 错误("Not Supported FC2");
     } else if (isWestern) {
       throw new Error("Not Supported Western");
     } else if (isUncensored) {
-      const guessStudio = this。useStudio();
+      const guessStudio = this.useStudio();
       return guessStudio(code， studio);
     } else {
       const getDMM = this.useDMM();
