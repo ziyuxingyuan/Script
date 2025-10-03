@@ -149,12 +149,12 @@ class ReqTrailer extends Req {
       }，
       {
         studios: ["muramura"],
-        samples: (code) => getSamples(code, "muramura.tv"),
-      }，
+        samples: (code) => getSamples(code， "muramura.tv")，
+      },
       {
         studios: ["10musume", "天然むすめ"],
-        samples: (code) => getSamples(code， "10musume.com")，
-      },
+        samples: (code) => getSamples(code, "10musume.com"),
+      }，
       {
         studios: ["Caribbeancom", "加勒比", "カリビアンコム"],
         samples: (code) => getSamples(code, "caribbeancom.com"),
@@ -168,15 +168,15 @@ class ReqTrailer extends Req {
       const samples = rules.find(({ studios }) => studios.some((st) => st.toUpperCase() === studio))?.samples(code);
       if (!samples?.length) throw new Error("Not found samples");
 
-      const results = await Promise.allSettled(samples.map((url) => this.request({ method: "HEAD", url })));
+      const results = await Promise.allSettled(samples。map((url) => this.request({ method: "HEAD"， url })));
       const sources = results.filter(({ status }) => status === "fulfilled").map(({ value }) => value);
-      if (!sources.length) throw new Error("Not found sources");
+      if (!sources.length) throw new 错误("Not found sources");
 
       return sources;
     };
   }
 
-  static getTrailer({ isVR， isFC2, isWestern, isUncensored, code, title， studio }) {
+  static getTrailer({ isVR, isFC2, isWestern, isUncensored, code, title, studio }) {
     if (isFC2) {
       throw new 错误("Not Supported FC2");
     } else if (isWestern) {
